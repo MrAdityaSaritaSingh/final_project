@@ -55,12 +55,22 @@ export const workbooksApi = {
     workbookId: string,
     page: number = 1,
     limit: number = 100,
-    transactionType: string = 'review'
-  ): Promise<any[]> => {
-    return apiClient.get(
-      `/api/workbooks/${workbookId}/transactions?page=${page}&limit=${limit}&transaction_type=${transactionType}`,
-      _token()
-    );
+    transactionType: string = 'review',
+    params: Record<string, any> = {}
+  ): Promise<{
+    transactions: any[];
+    total: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }> => {
+    const queryParams = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+      transaction_type: transactionType,
+      ...params,
+    });
+    return apiClient.get(`/api/workbooks/${workbookId}/transactions?${queryParams.toString()}`, _token());
   },
 };
 

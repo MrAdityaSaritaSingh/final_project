@@ -32,7 +32,8 @@ export default function DatasetReviewPanel({
         setIsLoadingMore(true);
       }
 
-      const data = await workbooksApi.getTransactions(workbookId, pageNum, PAGE_SIZE, 'review');
+      const response = await workbooksApi.getTransactions(workbookId, pageNum, PAGE_SIZE, 'review');
+      const data = response.transactions || [];
       
       if (data.length < PAGE_SIZE) {
         setHasMore(false);
@@ -46,6 +47,7 @@ export default function DatasetReviewPanel({
       } else {
         setRows(prev => [...prev, ...data]);
       }
+
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
     } finally {

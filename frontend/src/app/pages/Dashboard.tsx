@@ -5,7 +5,9 @@ import { useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import FiltersSidebar from '../components/FiltersSidebar';
 import QueryBox from '../components/QueryBox';
+import PaginationBar from '../components/PaginationBar';
 import { useWorkbook } from '../context/WorkbookContext';
+import { workbooksApi } from '../../api/workbooksApi';
 
 interface Tab {
   id: string;
@@ -39,11 +41,11 @@ interface DashboardProps {
   initialColumnMappings?: Record<string, string>;
 }
 
-export default function Dashboard({ embedded = false, initialCsvData = [], initialColumnMappings = {} }: DashboardProps) {
+export default function Dashboard({ embedded = false, workbookId, initialColumnMappings = {} }: DashboardProps) {
   const navigate = useNavigate();
   const { workbookData } = useWorkbook();
-  const csvData = workbookData?.csvData ?? initialCsvData ?? [];
   const columnMappings = workbookData?.columnMappings ?? initialColumnMappings ?? {};
+  
   const [tabs, setTabs] = useState<Tab[]>([
     { id: '1', label: 'Tab 1', transactions: [], lastRefreshed: null }
   ]);
@@ -53,36 +55,66 @@ export default function Dashboard({ embedded = false, initialCsvData = [], initi
   const [renameValue, setRenameValue] = useState('');
   const [showMenuForTab, setShowMenuForTab] = useState<string | null>(null);
   const [showReuploadModal, setShowReuploadModal] = useState(false);
+  
+  // Filtering and API state
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+  const [apiParams, setApiParams] = useState<Record<string, any>>({});
   const [currentQuery, setCurrentQuery] = useState<string>('');
   const [queryResultLabel, setQueryResultLabel] = useState<string>('');
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [totalCount, setTotalCount] = useState(0);
 
   const activeTab = tabs.find(tab => tab.id === activeTabId);
 
-  // Load CSV data from context or backend fallback
+  // Fetch transactions from API
   useEffect(() => {
-    if (csvData.length === 0) return;
+    if (!workbookId) return;
 
-    const mappedTransactions: Transaction[] = csvData.map((row: any, index: number) => ({
-      id: String(index + 1),
-      date: row[columnMappings['Date']] || row.date || '',
-      voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
-      account: row[columnMappings['Account Name']] || row.account || '',
-      narration: row[columnMappings['Narration']] || row.narration || '',
-      debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
-      credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
-      scrutinyCategory: row.scrutiny_category || '',
-      scrutinyReason: row.scrutiny_reason || '',
-    }));
+    const fetchTransactions = async () => {
+      setIsLoading(true);
+      try {
+        const response = await workbooksApi.getTransactions(
+          workbookId,
+          currentPage,
+          pageSize,
+          'flagged', // Default to flagged for investigation workspace
+          apiParams
+        );
 
-    setTabs(prevTabs =>
-      prevTabs.map(tab =>
-        tab.id === activeTabId
-          ? { ...tab, transactions: mappedTransactions, lastRefreshed: new Date() }
-          : tab
-      )
-    );
-  }, [csvData, columnMappings, activeTabId]);
+        const mappedTransactions: Transaction[] = response.transactions.map((row: any, index: number) => ({
+          id: String(index + 1 + (currentPage - 1) * pageSize),
+          date: row[columnMappings['Date']] || row.date || '',
+          voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
+          account: row[columnMappings['Account Name']] || row.account || '',
+          narration: row[columnMappings['Narration']] || row.narration || '',
+          debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
+          credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
+          scrutinyCategory: row.scrutiny_category || '',
+          scrutinyReason: row.scrutiny_reason || '',
+        }));
+
+        setTotalCount(response.total);
+
+        setTabs(prevTabs =>
+          prevTabs.map(tab =>
+            tab.id === activeTabId
+              ? { ...tab, transactions: mappedTransactions, lastRefreshed: new Date() }
+              : tab
+          )
+        );
+      } catch (error) {
+        console.error('Failed to fetch transactions:', error);
+        toast.error('Failed to load transactions');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTransactions();
+  }, [workbookId, currentPage, pageSize, activeTabId, columnMappings, apiParams]);
 
   const addTab = () => {
     const newTabNumber = tabs.length + 1;
@@ -133,341 +165,91 @@ export default function Dashboard({ embedded = false, initialCsvData = [], initi
   };
 
   const handleQuery = (query: string) => {
-    if (csvData.length === 0) return;
-
     setCurrentQuery(query);
-    setQueryResultLabel(''); // Reset label
-    setIsLoading(true);
-
+    setQueryResultLabel(''); 
+    
+    // Convert natural language query to backend API params
     const queryLower = query.toLowerCase().trim();
+    const newParams: Record<string, any> = { ...apiParams };
 
-    let filteredData = [...csvData];
-    let queryLabel = '';
-
-    // Check for weekend transactions
     if (queryLower.includes('weekend')) {
-      filteredData = filteredData.filter(row => {
-        const dateStr = row[columnMappings['Date']] || row.date || '';
-        if (!dateStr) return false;
-        try {
-          const date = new Date(dateStr);
-          const day = date.getDay(); // 0 = Sunday, 6 = Saturday
-          return day === 0 || day === 6;
-        } catch {
-          return false;
-        }
-      });
-      queryLabel = `Showing: Weekend Transactions (${filteredData.length} results)`;
-    }
-    // Check for round number transactions
-    else if (queryLower.includes('round') && queryLower.includes('transaction')) {
-      filteredData = filteredData.filter(row => {
-        const debit = parseFloat(row[columnMappings['Debit']] || '0');
-        const credit = parseFloat(row[columnMappings['Credit']] || '0');
-        return (debit > 0 && debit % 1000 === 0) || (credit > 0 && credit % 1000 === 0);
-      });
-      queryLabel = `Showing: Round Number Transactions (${filteredData.length} results)`;
-    }
-    else if (queryLower.includes('top') && queryLower.includes('10') && queryLower.includes('expense')) {
-      const parseAmount = (value: unknown) => {
-        const normalized = String(value || '').replace(/[^0-9.-]+/g, '');
-        const parsed = parseFloat(normalized);
-        return Number.isFinite(parsed) ? parsed : 0;
-      };
-
-      const ordered = [...filteredData].sort((a, b) => {
-        const aAmt = Math.max(parseAmount(a[columnMappings['Debit']]), parseAmount(a[columnMappings['Credit']]));
-        const bAmt = Math.max(parseAmount(b[columnMappings['Debit']]), parseAmount(b[columnMappings['Credit']]));
-        return bAmt - aAmt;
-      });
-      const topCount = Math.max(1, Math.floor(ordered.length * 0.1));
-      const topThreshold = ordered[topCount - 1]
-        ? Math.max(parseAmount(ordered[topCount - 1][columnMappings['Debit']]), parseAmount(ordered[topCount - 1][columnMappings['Credit']]))
-        : 0;
-      filteredData = filteredData.filter(row => {
-        const amount = Math.max(parseAmount(row[columnMappings['Debit']]), parseAmount(row[columnMappings['Credit']]));
-        return amount >= topThreshold;
-      });
-      queryLabel = `Showing: Top 10% Expenses (${filteredData.length} results)`;
-    }
-    else {
-      // Unknown query
-      setTimeout(() => {
-        setIsLoading(false);
-        toast.info("Demo mode: Try 'Show entries posted on weekends' or 'List round-number transactions'");
-      }, 500);
-      return;
+      newParams.search = 'weekend';
+      setQueryResultLabel(`Showing: Weekend Transactions`);
+    } else if (queryLower.includes('round') && queryLower.includes('transaction')) {
+      newParams.search = 'round';
+      setQueryResultLabel(`Showing: Round Number Transactions`);
+    } else if (queryLower.includes('top') && queryLower.includes('10') && queryLower.includes('expense')) {
+      newParams.search = 'top10_expenses';
+      setQueryResultLabel(`Showing: Top 10% Expenses`);
+    } else {
+      newParams.search = query;
+      setQueryResultLabel(`Search: "${query}"`);
     }
 
-    setQueryResultLabel(queryLabel);
-
-    // Convert back to Transaction format
-    const mappedTransactions: Transaction[] = filteredData.map((row: any, index: number) => ({
-      id: String(index + 1),
-      date: row[columnMappings['Date']] || row.date || '',
-      voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
-      account: row[columnMappings['Account Name']] || row.account || '',
-      narration: row[columnMappings['Narration']] || row.narration || '',
-      debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
-      credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
-      scrutinyCategory: '',
-      scrutinyReason: '',
-    }));
-
-    setTabs(prevTabs =>
-      prevTabs.map(tab =>
-        tab.id === activeTabId
-          ? { ...tab, transactions: mappedTransactions, lastRefreshed: new Date() }
-          : tab
-      )
-    );
-
-    setTimeout(() => setIsLoading(false), 500);
+    setApiParams(newParams);
+    setCurrentPage(1); // Reset to first page
   };
 
   const handleApplyFilters = (filters: any) => {
-    if (csvData.length === 0) return;
-
-    setIsLoading(true);
-
-    // Convert filters to active filters display
     const activeFiltersList: ActiveFilter[] = [];
-    if (filters.ledgerType) activeFiltersList.push({ id: 'ledgerType', label: 'Ledger Type', value: filters.ledgerType });
-    if (filters.financialYear) activeFiltersList.push({ id: 'financialYear', label: 'Financial Year', value: filters.financialYear });
-    if (filters.quarter) activeFiltersList.push({ id: 'quarter', label: 'Quarter', value: filters.quarter });
-    if (filters.customAmount) activeFiltersList.push({ id: 'customAmount', label: 'Amount Above', value: `₹${filters.customAmount}` });
-    if (filters.keywordSearch) activeFiltersList.push({ id: 'keywordSearch', label: 'Keyword', value: filters.keywordSearch });
-
-    setActiveFilters(activeFiltersList);
-
-    // Apply filters to the data
-    let filteredData = [...csvData];
-
-    const getDateFromRow = (row: any) => {
-      const value = row[columnMappings['Date']] || row.date || '';
-      const parsed = new Date(String(value));
-      return Number.isNaN(parsed.getTime()) ? null : parsed;
-    };
-
-    const getRowValue = (row: any, key: string) => String(row[columnMappings[key]] || row[key] || '').toLowerCase();
+    const newParams: Record<string, any> = {};
 
     if (filters.ledgerType) {
-      const ledgerValue = filters.ledgerType.toLowerCase();
-      filteredData = filteredData.filter(row => {
-        const combined = [
-          getRowValue(row, 'Account Name'),
-          getRowValue(row, 'Narration'),
-          getRowValue(row, 'Voucher Type'),
-        ].join(' ');
-
-        if (ledgerValue === 'general') return true;
-        if (ledgerValue === 'ar') return combined.includes('receivable') || combined.includes('ar');
-        if (ledgerValue === 'ap') return combined.includes('payable') || combined.includes('ap');
-        if (ledgerValue === 'payroll') return combined.includes('payroll') || combined.includes('salary') || combined.includes('wage');
-        if (ledgerValue === 'inventory') return combined.includes('inventory') || combined.includes('stock');
-        if (ledgerValue === 'fixed-assets') return combined.includes('fixed asset') || combined.includes('asset');
-        if (ledgerValue === 'bank') return combined.includes('bank') || combined.includes('cash');
-        if (ledgerValue === 'purchase') return combined.includes('purchase') || combined.includes('procure');
-        if (ledgerValue === 'sales') return combined.includes('sale') || combined.includes('revenue');
-        return true;
-      });
+      activeFiltersList.push({ id: 'ledgerType', label: 'Ledger Type', value: filters.ledgerType });
+      newParams.ledger_type = filters.ledgerType;
     }
-
     if (filters.financialYear) {
-      filteredData = filteredData.filter(row => {
-        const date = getDateFromRow(row);
-        if (!date) return false;
-        const year = date.getFullYear();
-        const month = date.getMonth();
-
-        if (filters.financialYear === '2025-26') {
-          return year === 2025 || (year === 2026 && month <= 2);
-        }
-        if (filters.financialYear === '2024-25') {
-          return year === 2024 || (year === 2025 && month <= 2);
-        }
-        if (filters.financialYear === '2023-24') {
-          return year === 2023 || (year === 2024 && month <= 2);
-        }
-        if (filters.financialYear === '2022-23') {
-          return year === 2022 || (year === 2023 && month <= 2);
-        }
-        return String(year) === filters.financialYear;
-      });
+      activeFiltersList.push({ id: 'financialYear', label: 'Financial Year', value: filters.financialYear });
+      newParams.financial_year = filters.financialYear;
     }
-
     if (filters.quarter) {
-      const quarterMap: Record<string, number[]> = {
-        q1: [3, 4, 5],
-        q2: [6, 7, 8],
-        q3: [9, 10, 11],
-        q4: [0, 1, 2],
-      };
-      filteredData = filteredData.filter(row => {
-        const date = getDateFromRow(row);
-        return date ? quarterMap[filters.quarter]?.includes(date.getMonth()) : false;
-      });
+      activeFiltersList.push({ id: 'quarter', label: 'Quarter', value: filters.quarter });
+      newParams.quarter = filters.quarter;
     }
-
-    if (filters.keywordSearch) {
-      const searchTerm = filters.keywordSearch.toLowerCase();
-      filteredData = filteredData.filter(row => {
-        const narration = getRowValue(row, 'Narration');
-        const account = getRowValue(row, 'Account Name');
-        return narration.includes(searchTerm) || account.includes(searchTerm);
-      });
-    }
-
-    // Apply amount filters
-    const parseAmount = (value: unknown) => {
-      const parsed = parseFloat(String(value || '').replace(/[^0-9.-]+/g, ''));
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-
     if (filters.customAmount) {
-      const threshold = parseFloat(filters.customAmount);
-      filteredData = filteredData.filter(row => {
-        const debit = parseAmount(row[columnMappings['Debit']]);
-        const credit = parseAmount(row[columnMappings['Credit']]);
-        return debit >= threshold || credit >= threshold;
-      });
+      activeFiltersList.push({ id: 'customAmount', label: 'Amount Above', value: `₹${filters.customAmount}` });
+      newParams.min_amount = filters.customAmount;
+    }
+    if (filters.keywordSearch) {
+      activeFiltersList.push({ id: 'keywordSearch', label: 'Keyword', value: filters.keywordSearch });
+      newParams.search = filters.keywordSearch;
     }
 
-    if (filters.amountAbove500k) {
-      filteredData = filteredData.filter(row => {
-        const debit = parseAmount(row[columnMappings['Debit']]);
-        const credit = parseAmount(row[columnMappings['Credit']]);
-        return debit >= 500000 || credit >= 500000;
-      });
-    }
-
-    if (filters.topTenPercent) {
-      const ordered = [...filteredData].sort((a, b) => {
-        const aAmt = Math.max(parseAmount(a[columnMappings['Debit']]), parseAmount(a[columnMappings['Credit']]));
-        const bAmt = Math.max(parseAmount(b[columnMappings['Debit']]), parseAmount(b[columnMappings['Credit']]));
-        return bAmt - aAmt;
-      });
-      const topCount = Math.max(1, Math.floor(ordered.length * 0.1));
-      const topThreshold = ordered[topCount - 1] ? Math.max(parseAmount(ordered[topCount - 1][columnMappings['Debit']]), parseAmount(ordered[topCount - 1][columnMappings['Credit']])) : 0;
-      filteredData = filteredData.filter(row => {
-        const amount = Math.max(parseAmount(row[columnMappings['Debit']]), parseAmount(row[columnMappings['Credit']]));
-        return amount >= topThreshold;
-      });
-    }
-
-    if (filters.accountAssets || filters.accountLiabilities || filters.accountEquity ||
-        filters.accountRevenue || filters.accountCOGS || filters.accountExpenses) {
-      filteredData = filteredData.filter(row => {
-        const account = getRowValue(row, 'Account Name');
-        if (filters.accountAssets && account.includes('asset')) return true;
-        if (filters.accountLiabilities && account.includes('liabilit')) return true;
-        if (filters.accountEquity && account.includes('equity')) return true;
-        if (filters.accountRevenue && (account.includes('revenue') || account.includes('income'))) return true;
-        if (filters.accountCOGS && account.includes('cost') && account.includes('goods')) return true;
-        if (filters.accountExpenses && account.includes('expens')) return true;
-        return false;
-      });
-    }
-
-    if (filters.voucherJournal || filters.voucherPayment || filters.voucherReceipt || filters.voucherContra || filters.voucherOther) {
-      filteredData = filteredData.filter(row => {
-        const voucherType = getRowValue(row, 'Voucher Type');
-        if (filters.voucherJournal && voucherType.includes('journal')) return true;
-        if (filters.voucherPayment && voucherType.includes('payment')) return true;
-        if (filters.voucherReceipt && voucherType.includes('receipt')) return true;
-        if (filters.voucherContra && voucherType.includes('contra')) return true;
-        if (filters.voucherOther && voucherType.includes('other')) return true;
-        return false;
-      });
-    }
-
-    if (filters.currencyINR || filters.currencyUSD || filters.currencyEUR || filters.currencyGBP) {
-      filteredData = filteredData.filter(row => {
-        const currency = getRowValue(row, 'Currency');
-        if (filters.currencyINR && currency.includes('inr')) return true;
-        if (filters.currencyUSD && currency.includes('usd')) return true;
-        if (filters.currencyEUR && currency.includes('eur')) return true;
-        if (filters.currencyGBP && currency.includes('gbp')) return true;
-        return false;
-      });
-    }
-
-    // Convert back to Transaction format
-    const mappedTransactions: Transaction[] = filteredData.map((row: any, index: number) => ({
-      id: String(index + 1),
-      date: row[columnMappings['Date']] || row.date || '',
-      voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
-      account: row[columnMappings['Account Name']] || row.account || '',
-      narration: row[columnMappings['Narration']] || row.narration || '',
-      debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
-      credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
-      scrutinyCategory: '',
-      scrutinyReason: '',
-    }));
-
-    setTabs(prevTabs =>
-      prevTabs.map(tab =>
-        tab.id === activeTabId
-          ? { ...tab, transactions: mappedTransactions, lastRefreshed: new Date() }
-          : tab
-      )
-    );
-
-    setTimeout(() => setIsLoading(false), 500);
+    // Add other complex filters if needed, passing them to the backend...
+    
+    setActiveFilters(activeFiltersList);
+    setApiParams(newParams);
+    setCurrentPage(1);
   };
 
   const handleResetFilters = () => {
     setActiveFilters([]);
     setCurrentQuery('');
     setQueryResultLabel('');
-    // Reset to show all data
-    if (csvData.length > 0) {
-      const mappedTransactions: Transaction[] = csvData.map((row: any, index: number) => ({
-        id: String(index + 1),
-        date: row[columnMappings['Date']] || row.date || '',
-        voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
-        account: row[columnMappings['Account Name']] || row.account || '',
-        narration: row[columnMappings['Narration']] || row.narration || '',
-        debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
-        credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
-        scrutinyCategory: '',
-        scrutinyReason: '',
-      }));
-
-      setTabs(prevTabs =>
-        prevTabs.map(tab =>
-          tab.id === activeTabId
-            ? { ...tab, transactions: mappedTransactions, lastRefreshed: new Date() }
-            : tab
-        )
-      );
-    }
+    setApiParams({});
+    setCurrentPage(1);
   };
 
   const removeFilter = (filterId: string) => {
     const newFilters = activeFilters.filter(f => f.id !== filterId);
     setActiveFilters(newFilters);
-    if (newFilters.length === 0 && csvData.length > 0) {
-      const mappedTransactions: Transaction[] = csvData.map((row: any, index: number) => ({
-        id: String(index + 1),
-        date: row[columnMappings['Date']] || row.date || '',
-        voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
-        account: row[columnMappings['Account Name']] || row.account || '',
-        narration: row[columnMappings['Narration']] || row.narration || '',
-        debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
-        credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
-        scrutinyCategory: '',
-        scrutinyReason: '',
-      }));
-
-      setTabs(prevTabs =>
-        prevTabs.map(tab =>
-          tab.id === activeTabId
-            ? { ...tab, transactions: mappedTransactions, lastRefreshed: new Date() }
-            : tab
-        )
-      );
+    
+    const newParams = { ...apiParams };
+    // Map filterId to apiParam key
+    const filterToParamMap: Record<string, string> = {
+      'ledgerType': 'ledger_type',
+      'financialYear': 'financial_year',
+      'quarter': 'quarter',
+      'customAmount': 'min_amount',
+      'keywordSearch': 'search'
+    };
+    
+    if (filterToParamMap[filterId]) {
+      delete newParams[filterToParamMap[filterId]];
     }
+    
+    setApiParams(newParams);
+    setCurrentPage(1);
   };
 
   const handleDownloadReport = () => {
@@ -486,9 +268,8 @@ export default function Dashboard({ embedded = false, initialCsvData = [], initi
     return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
   };
 
-  const handleAddToDocumentation = (transaction: Transaction) => {
+  const handleAddToDocumentation = () => {
     toast.success('Transaction added to Documentation');
-    console.log('Added to documentation:', transaction);
   };
 
   return (
@@ -575,8 +356,8 @@ export default function Dashboard({ embedded = false, initialCsvData = [], initi
                       {tabs.length > 1 && (
                         <button
                           onClick={(e) => {
-                            e.stopPropagation();
-                            closeTab(tab.id, e);
+                          e.stopPropagation();
+                          closeTab(tab.id, e);
                           }}
                           className="opacity-0 group-hover:opacity-100 transition-opacity"
                           type="button"
@@ -616,125 +397,144 @@ export default function Dashboard({ embedded = false, initialCsvData = [], initi
           </div>
 
           {/* Scrollable Results Section */}
-          <div className="flex-1 overflow-auto bg-white pb-6">
+          <div className="flex-1 overflow-auto bg-white flex flex-col">
             {isLoading ? (
-              <div className="flex items-center justify-center h-full min-h-[400px]">
+              <div className="flex-1 flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
                   <p className="text-sm text-gray-600">Loading transactions...</p>
                 </div>
               </div>
             ) : activeTab && activeTab.transactions.length > 0 ? (
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={activeTab.lastRefreshed?.getTime() || 'empty'}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs text-gray-500">
-                        Results update only when 'Apply Filters' is clicked or a query is submitted.
-                      </p>
-                      {activeTab.lastRefreshed && (
-                        <p className="text-xs text-gray-600 flex items-center gap-1">
-                          <RefreshCw className="w-3 h-3" />
-                          Results refreshed {getTimeSinceRefresh(activeTab.lastRefreshed)}
-                        </p>
-                      )}
-                    </div>
-                    {currentQuery && (
-                      <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
-                        Query: "{currentQuery}"
-                      </div>
-                    )}
-                    {queryResultLabel && (
-                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800 font-medium">
-                        {queryResultLabel}
-                      </div>
-                    )}
-                  </div>
-
-                  {activeFilters.length > 0 && (
-                    <div className="px-4 py-3 border-b border-gray-200 bg-blue-50">
-                      <div className="flex items-start gap-3">
-                        <span className="text-xs text-gray-600 pt-1.5 whitespace-nowrap">Active Filters:</span>
-                        <div className="flex flex-wrap gap-2">
-                          {activeFilters.map(filter => (
-                            <div
-                              key={filter.id}
-                              className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 rounded-full text-xs text-gray-700"
-                            >
-                              <span>
-                                <span className="font-medium">{filter.label}:</span> {filter.value}
-                              </span>
-                              <button
-                                onClick={() => removeFilter(filter.id)}
-                                className="text-gray-400 hover:text-gray-600 transition-colors"
-                                title={`Remove ${filter.label} filter`}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ))}
+              <div className="flex-1 flex flex-col">
+                <div className="flex-1 overflow-auto">
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={activeTab.lastRefreshed?.getTime() || 'empty'}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-xs text-gray-500">
+                            Results update from server based on filters and queries.
+                          </p>
+                          {activeTab.lastRefreshed && (
+                            <p className="text-xs text-gray-600 flex items-center gap-1">
+                              <RefreshCw className="w-3 h-3" />
+                              Results refreshed {getTimeSinceRefresh(activeTab.lastRefreshed)}
+                            </p>
+                          )}
                         </div>
+                        {currentQuery && (
+                          <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-800">
+                            Query: "{currentQuery}"
+                          </div>
+                        )}
+                        {queryResultLabel && (
+                          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded text-sm text-green-800 font-medium">
+                            {queryResultLabel}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                  )}
 
-                  <table className="w-full">
-                    <thead className="bg-gray-50 sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Date</th>
-                        <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Voucher No</th>
-                        <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Account</th>
-                        <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Narration</th>
-                        <th className="px-4 py-3 text-right text-xs text-gray-600 border-b">Debit</th>
-                        <th className="px-4 py-3 text-right text-xs text-gray-600 border-b">Credit</th>
-                        <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Scrutiny Category</th>
-                        <th className="px-4 py-3 text-left text-xs text-gray-600 border-b w-80">Scrutiny Reason</th>
-                        <th className="px-4 py-3 text-center text-xs text-gray-600 border-b w-20">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {activeTab.transactions.map((transaction) => (
-                        <tr key={transaction.id} className="hover:bg-gray-50 border-b border-gray-100">
-                          <td className="px-4 py-3 text-sm text-gray-700">{transaction.date}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{transaction.voucherNo}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700">{transaction.account}</td>
-                          <td className="px-4 py-3 text-sm text-gray-600">
-                            {transaction.narration || <span className="text-gray-400 italic">No narration</span>}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-700 text-right">{transaction.debit}</td>
-                          <td className="px-4 py-3 text-sm text-gray-700 text-right">{transaction.credit}</td>
-                          <td className="px-4 py-3 text-sm">
-                            <span className="inline-block px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs">
-                              {transaction.scrutinyCategory}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 w-80">{transaction.scrutinyReason}</td>
-                          <td className="px-4 py-3 text-center">
-                            <button
-                              onClick={() => handleAddToDocumentation(transaction)}
-                              className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
-                              title="Add to Documentation"
-                            >
-                              <Copy className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </motion.div>
-              </AnimatePresence>
+                      {activeFilters.length > 0 && (
+                        <div className="px-4 py-3 border-b border-gray-200 bg-blue-50">
+                          <div className="flex items-start gap-3">
+                            <span className="text-xs text-gray-600 pt-1.5 whitespace-nowrap">Active Filters:</span>
+                            <div className="flex flex-wrap gap-2">
+                              {activeFilters.map(filter => (
+                                <div
+                                  key={filter.id}
+                                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-white border border-blue-200 rounded-full text-xs text-gray-700"
+                                >
+                                  <span>
+                                    <span className="font-medium">{filter.label}:</span> {filter.value}
+                                  </span>
+                                  <button
+                                    onClick={() => removeFilter(filter.id)}
+                                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                                    title={`Remove ${filter.label} filter`}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <table className="w-full">
+                        <thead className="bg-gray-50 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Date</th>
+                            <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Voucher No</th>
+                            <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Account</th>
+                            <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Narration</th>
+                            <th className="px-4 py-3 text-right text-xs text-gray-600 border-b">Debit</th>
+                            <th className="px-4 py-3 text-right text-xs text-gray-600 border-b">Credit</th>
+                            <th className="px-4 py-3 text-left text-xs text-gray-600 border-b">Scrutiny Category</th>
+                            <th className="px-4 py-3 text-left text-xs text-gray-600 border-b w-80">Scrutiny Reason</th>
+                            <th className="px-4 py-3 text-center text-xs text-gray-600 border-b w-20">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {activeTab.transactions.map((transaction) => (
+                            <tr key={transaction.id} className="hover:bg-gray-50 border-b border-gray-100">
+                              <td className="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{transaction.date}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700">{transaction.voucherNo}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700">{transaction.account}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">
+                                {transaction.narration || <span className="text-gray-400 italic">No narration</span>}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-700 text-right whitespace-nowrap">{transaction.debit}</td>
+                              <td className="px-4 py-3 text-sm text-gray-700 text-right whitespace-nowrap">{transaction.credit}</td>
+                              <td className="px-4 py-3 text-sm">
+                                {transaction.scrutinyCategory ? (
+                                  <span className="inline-block px-2 py-1 bg-amber-100 text-amber-800 rounded text-xs">
+                                    {transaction.scrutinyCategory}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-600 w-80">{transaction.scrutinyReason}</td>
+                              <td className="px-4 py-3 text-center">
+                                <button
+                                  onClick={() => handleAddToDocumentation()}
+                                  className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+                                  title="Add to Documentation"
+                                >
+                                  <Copy className="w-4 h-4" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </motion.div>
+                  </AnimatePresence>
+                </div>
+                
+                {/* Pagination Controls */}
+                <div className="mt-auto flex-shrink-0 border-t border-gray-200">
+                  <PaginationBar 
+                    currentPage={currentPage}
+                    totalCount={totalCount}
+                    pageSize={pageSize}
+                    onPageChange={setCurrentPage}
+                    onPageSizeChange={setPageSize}
+                  />
+                </div>
+              </div>
             ) : (
-              <div className="flex items-center justify-center h-full min-h-[400px] text-gray-400">
+              <div className="flex-1 flex items-center justify-center min-h-[400px] text-gray-400">
                 <div className="text-center">
                   <p className="text-sm">No transactions to display</p>
-                  <p className="text-xs mt-1">Enter a query below or apply filters to view data</p>
+                  <p className="text-xs mt-1">Adjust filters or queries to view data</p>
                 </div>
               </div>
             )}
@@ -787,4 +587,3 @@ export default function Dashboard({ embedded = false, initialCsvData = [], initi
     </div>
   );
 }
-

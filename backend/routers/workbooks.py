@@ -1,4 +1,5 @@
 import os
+import math
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -189,25 +190,47 @@ def delete_workbook(workbook_id: str, user_id: str = Depends(_current_user_id)):
         raise HTTPException(status_code=400, detail=detail) from exc
 
 
-@router.get("/{workbook_id}/transactions", response_model=list[dict])
+@router.get("/{workbook_id}/transactions")
 def get_workbook_transactions(
     workbook_id: str,
     page: int = 1,
     limit: int = 100,
     transaction_type: str = "review",
+    search: str = "",
+    scrutiny_category: str = "",
+    quarter: str = "",
+    min_amount: float = None,
+    max_amount: float = None,
+    ledger_type: str = "",
+    financial_year: str = "",
     user_id: str = Depends(_current_user_id)
 ):
     try:
         skip = (page - 1) * limit
-        rows = query_transactions_for_user(
+        filters = {}
+        if search: filters["search_text"] = search
+        if scrutiny_category: filters["scrutiny_category"] = scrutiny_category
+        if quarter: filters["quarter"] = quarter
+        if min_amount is not None: filters["min_amount"] = min_amount
+        if max_amount is not None: filters["max_amount"] = max_amount
+        if ledger_type: filters["ledger_type"] = ledger_type
+        if financial_year: filters["financial_year"] = financial_year
+        
+        rows, total = query_transactions_for_user(
             user_id=user_id,
             workbook_id=workbook_id,
-            filters={},  # No filters for now
+            filters=filters,
             transaction_type=transaction_type,
             skip=skip,
             limit=limit
         )
-        return rows
+        return {
+            "transactions": rows,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": math.ceil(total / limit) if limit > 0 else 0
+        }
     except WorkbookError as exc:
         detail = str(exc)
         if "not found" in detail.lower():

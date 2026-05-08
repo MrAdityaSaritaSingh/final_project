@@ -288,7 +288,7 @@ def query_transactions_for_user(
     transaction_type: str = "review",
     skip: int = 0,
     limit: int = 100
-) -> List[Dict[str, Any]]:
+) -> tuple[List[Dict[str, Any]], int]:
     """Query and filter transactions from a workbook's analysis with pagination."""
     doc = get_workbook_for_user(user_id, workbook_id)
     
@@ -328,6 +328,7 @@ def query_transactions_for_user(
 
     try:
         cursor = _get_db().transactions.find(query).skip(skip).limit(limit)
+        total = _get_db().transactions.count_documents(query)
         # Combine the generated metadata and the raw data for the frontend
         results = []
         for doc in cursor:
@@ -337,9 +338,9 @@ def query_transactions_for_user(
             row["scrutiny_reason"] = doc.get("reason", "")
             row["is_flagged"] = doc.get("is_flagged", False)
             results.append(row)
-        return results
+        return results, total
     except Exception:
-        return []
+        return [], 0
 
 
 def to_public_workbook(doc: Dict[str, Any], include_rows: bool = True) -> Dict[str, Any]:
