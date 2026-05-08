@@ -34,7 +34,6 @@ export interface Workbook {
   has_entity_config?: boolean;
   entity_config?: WorkbookEntityConfig;
   column_mappings?: Record<string, string>;
-  review_rows?: any[];
   analysis_summary?: WorkbookSummary;
   category_counts?: any[];
 }

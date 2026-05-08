@@ -68,7 +68,6 @@ class TestReplaceDatasetBackend:
                     "scrutiny_reason": "Posted on last day of month",
                 },
             ],
-            "review_rows": [],
             "created_at": "2024-05-01",
             "updated_at": "2024-05-15",
         }

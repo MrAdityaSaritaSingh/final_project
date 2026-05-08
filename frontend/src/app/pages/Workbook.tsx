@@ -139,7 +139,6 @@ export default function Workbook() {
             embedded
             workbookId={workbook.id}
             analysisSummary={workbook.analysis_summary}
-            categoryCounts={workbook.category_counts}
             columnMappings={workbook.column_mappings}
           />
         )}

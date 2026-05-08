@@ -244,7 +244,6 @@ describe('Replace Dataset - Integration Tests', () => {
             scrutiny_reason: 'Multiple of 1000',
           },
         ],
-        review_rows: [],
       };
 
       expect(newResults.summary.total_entries).not.toBe(1000);
@@ -270,7 +269,6 @@ describe('Replace Dataset - Integration Tests', () => {
         summary: { total_entries: 100, rule_flagged: 10, ml_flagged: 5, total_flagged: 15, pct_flagged: 15 },
         category_counts: [],
         flagged_rows: [],
-        review_rows: [],
       };
 
       if (newResults) {
@@ -291,7 +289,6 @@ describe('Replace Dataset - Integration Tests', () => {
         summary: { total_entries: 200, rule_flagged: 20, ml_flagged: 5, total_flagged: 25, pct_flagged: 12.5 },
         category_counts: [],
         flagged_rows: [],
-        review_rows: [],
       };
 
       expect(metadata.workbookName).toBe('ABC Corp FY2024');
@@ -327,7 +324,6 @@ describe('Replace Dataset - UI/Component Tests', () => {
         scrutiny_reason: 'Multiple of 1000',
       },
     ],
-    review_rows: [],
   };
 
   const defaultProps = {
@@ -470,7 +466,6 @@ describe('Replace Dataset - Edge Cases', () => {
       },
       category_counts: [],
       flagged_rows: [],
-      review_rows: [],
     };
 
     expect(emptyResults.flagged_rows).toHaveLength(0);

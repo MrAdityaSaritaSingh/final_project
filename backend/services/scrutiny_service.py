@@ -101,10 +101,38 @@ def _build_transaction_docs(raw_df: pd.DataFrame, analyzed_df: pd.DataFrame, wor
             "searchable_text": searchable_text,
             "category": norm.get("scrutiny_category", ""),
             "reason": norm.get("scrutiny_reason", ""),
-            "data": raw
+            "data": _sanitize_raw_row(raw)
         }
         docs.append(doc)
     return docs
+
+
+def _sanitize_raw_row(raw: dict) -> dict:
+    """Clean comma-formatted numbers in the raw row so downstream consumers
+    (e.g. the frontend) never receive strings like '3,500' that fail Number()."""
+    import re
+    cleaned = {}
+    _NUMERIC_HINT = re.compile(
+        r"^[(\s]*-?\s*[₹$€£]?\s*[\d,]+\.?\d*\s*(?:Dr|Cr|dr|cr)?\s*[)\s]*$"
+    )
+    for key, val in raw.items():
+        if isinstance(val, str) and "," in val and _NUMERIC_HINT.match(val.strip()):
+            # Strip commas, currency markers, and whitespace
+            stripped = val.replace(",", "").replace("₹", "").replace("$", "")
+            stripped = stripped.replace("€", "").replace("£", "").strip()
+            # Handle accounting-style parens: (1000) -> -1000
+            paren_match = re.match(r"^\((.+)\)$", stripped)
+            if paren_match:
+                stripped = f"-{paren_match.group(1)}"
+            # Strip Dr/Cr suffixes
+            stripped = re.sub(r"\s*(Dr|Cr|dr|cr)\s*$", "", stripped).strip()
+            try:
+                cleaned[key] = float(stripped)
+            except ValueError:
+                cleaned[key] = val  # Keep original if conversion fails
+        else:
+            cleaned[key] = val
+    return cleaned
 
 
 def run_analysis(tmp_path: str, use_ml: bool, contamination: float, workbook_id: str = "") -> tuple[pd.DataFrame, dict]:

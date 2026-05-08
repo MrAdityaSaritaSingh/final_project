@@ -32,7 +32,6 @@ export interface ScrutinyResponse {
   summary: ScrutinySummary;
   category_counts: CategoryCount[];
   flagged_rows: FlaggedRow[];
-  review_rows: Record<string, unknown>[];
 }
 
 export type MappingStatus = 'mapped' | 'derived' | 'missing' | 'defaulted';

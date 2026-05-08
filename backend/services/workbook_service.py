@@ -1,3 +1,4 @@
+import math
 import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -40,6 +41,14 @@ def _get_db():
         _db = _client[MONGO_DB_NAME]
         _db.command("ping")
         _db.workbooks.create_index([("owner_user_id", 1), ("updated_at", -1)])
+        
+        # Transaction collection indexes for filter/sort performance
+        _db.transactions.create_index([("workbook_id", 1), ("is_flagged", 1)])
+        _db.transactions.create_index([("workbook_id", 1), ("amount", -1)])
+        _db.transactions.create_index([("workbook_id", 1), ("date", 1)])
+        _db.transactions.create_index([("workbook_id", 1), ("voucher_type", 1)])
+        _db.transactions.create_index([("workbook_id", 1), ("searchable_text", 1)])
+        
         return _db
     except ServerSelectionTimeoutError as exc:
         raise WorkbookError(
@@ -246,7 +255,6 @@ def save_analysis_for_user(
     # We leave the rows empty in the returned doc to avoid memory overhead
     # since it's just returning from the ingest endpoint
     doc["flagged_rows"] = []
-    doc["review_rows"] = []
     
     return doc
 
@@ -287,7 +295,9 @@ def query_transactions_for_user(
     filters: Dict[str, Any],
     transaction_type: str = "review",
     skip: int = 0,
-    limit: int = 100
+    limit: int = 100,
+    sort_by: str = "date",
+    sort_order: int = 1
 ) -> tuple[List[Dict[str, Any]], int]:
     """Query and filter transactions from a workbook's analysis with pagination."""
     doc = get_workbook_for_user(user_id, workbook_id)
@@ -310,7 +320,12 @@ def query_transactions_for_user(
         query["voucher_type"] = {"$in": [v.lower() for v in filters["voucher_types"]]}
         
     if filters.get("account_series"):
-        query["account_series"] = {"$regex": f"^{filters['account_series']}", "$options": "i"}
+        series_list = [s.strip() for s in filters["account_series"].split(",") if s.strip()]
+        if len(series_list) == 1:
+            query["account_series"] = {"$regex": f"^{series_list[0]}", "$options": "i"}
+        elif len(series_list) > 1:
+            patterns = "|".join(series_list)
+            query["account_series"] = {"$regex": f"^({patterns})", "$options": "i"}
         
     if filters.get("ledger_type"):
         query["ledger_type"] = {"$regex": filters["ledger_type"], "$options": "i"}
@@ -326,17 +341,44 @@ def query_transactions_for_user(
     if filters.get("search_text"):
         query["searchable_text"] = {"$regex": filters["search_text"].lower(), "$options": "i"}
 
+    if filters.get("scrutiny_category"):
+        query["category"] = {"$regex": filters["scrutiny_category"], "$options": "i"}
+
+    if filters.get("amount_preset") == "above500k":
+        if "amount" not in query:
+            query["amount"] = {}
+        # Take max of existing min_amount and 500k
+        existing_min = query["amount"].get("$gte", 0)
+        query["amount"]["$gte"] = max(existing_min, 500000.0)
+
     try:
-        cursor = _get_db().transactions.find(query).skip(skip).limit(limit)
+        # Whitelist sort fields
+        valid_sort_fields = {"date", "amount", "ledger_type", "voucher_type"}
+        actual_sort_by = sort_by if sort_by in valid_sort_fields else "date"
+        
         total = _get_db().transactions.count_documents(query)
+        
+        # Handle top10expenses preset
+        actual_skip = skip
+        actual_limit = limit
+        if filters.get("amount_preset") == "top10expenses":
+            actual_limit = math.ceil(total * 0.1)
+            actual_skip = 0 # Top 10% ignore pagination skip
+            actual_sort_by = "amount"
+            sort_order = -1
+            # Still cap by requested limit to prevent massive responses if not paginated
+            if limit > 0 and actual_limit > limit:
+                actual_limit = limit
+
+        cursor = _get_db().transactions.find(query).sort(actual_sort_by, sort_order).skip(actual_skip).limit(actual_limit)
         # Combine the generated metadata and the raw data for the frontend
         results = []
-        for doc in cursor:
-            row = doc.get("data", {})
+        for txn_doc in cursor:
+            row = txn_doc.get("data", {})
             # Ensure derived fields are included in the row if they're not there
-            row["scrutiny_category"] = doc.get("category", "")
-            row["scrutiny_reason"] = doc.get("reason", "")
-            row["is_flagged"] = doc.get("is_flagged", False)
+            row["scrutiny_category"] = txn_doc.get("category", "")
+            row["scrutiny_reason"] = txn_doc.get("reason", "")
+            row["is_flagged"] = txn_doc.get("is_flagged", False)
             results.append(row)
         return results, total
     except Exception:
@@ -379,17 +421,6 @@ def to_public_workbook(doc: Dict[str, Any], include_rows: bool = True) -> Dict[s
 
     column_mappings = doc.get("column_mappings") if isinstance(doc.get("column_mappings"), dict) else {}
     
-    review_rows = None
-    if include_rows:
-        if "review_rows" in doc and isinstance(doc["review_rows"], list) and doc["review_rows"]:
-            review_rows = doc["review_rows"]
-        else:
-            try:
-                cursor = _get_db().transactions.find({"workbook_id": doc["_id"], "type": "review"})
-                review_rows = [c.get("data", {}) for c in cursor]
-            except Exception:
-                review_rows = []
-
     return {
         "id": str(doc.get("_id", "")),
         "client_name": doc.get("client_name", ""),
@@ -407,7 +438,91 @@ def to_public_workbook(doc: Dict[str, Any], include_rows: bool = True) -> Dict[s
         "has_entity_config": bool(entity_config),
         "entity_config": entity_config,
         "column_mappings": column_mappings,
-        "review_rows": review_rows,
         "analysis_summary": analysis_summary,
         "category_counts": category_counts,
     }
+
+def aggregate_workbook_kpis(user_id: str, workbook_id: str) -> Dict[str, Any]:
+    """Run an aggregation pipeline to get KPIs, risk buckets, and controls."""
+    doc = get_workbook_for_user(user_id, workbook_id)
+    workbook_oid = doc["_id"]
+
+    pipeline = [
+        {"$match": {"workbook_id": workbook_oid, "is_flagged": True}},
+        {
+            "$facet": {
+                "total_exposure": [
+                    {"$group": {"_id": None, "total": {"$sum": {"$abs": "$amount"}}}}
+                ],
+                "risk_buckets": [
+                    {
+                        "$addFields": {
+                            "bucket": {
+                                "$cond": [
+                                    {
+                                        "$or": [
+                                            {"$regexMatch": {"input": "$category", "regex": "ML Anomaly", "options": "i"}},
+                                            {"$regexMatch": {"input": "$category", "regex": "Manual Journal", "options": "i"}},
+                                            {"$gte": ["$amount", 100000]}
+                                        ]
+                                    },
+                                    "high",
+                                    {
+                                        "$cond": [
+                                            {
+                                                "$or": [
+                                                    {"$regexMatch": {"input": "$category", "regex": "Period End", "options": "i"}},
+                                                    {"$regexMatch": {"input": "$category", "regex": "Weekend", "options": "i"}},
+                                                    {"$regexMatch": {"input": "$category", "regex": "Duplicate", "options": "i"}},
+                                                    {"$regexMatch": {"input": "$category", "regex": "Round Numbers", "options": "i"}}
+                                                ]
+                                            },
+                                            "medium",
+                                            "low"
+                                        ]
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    {"$group": {"_id": "$bucket", "count": {"$sum": 1}, "exposure": {"$sum": {"$abs": "$amount"}}}}
+                ],
+                "controls": [
+                    {"$project": {"category_list": {"$split": ["$category", ", "]}, "amount": 1}},
+                    {"$unwind": "$category_list"},
+                    {
+                        "$group": {
+                            "_id": "$category_list",
+                            "count": {"$sum": 1},
+                            "exposure": {"$sum": {"$abs": "$amount"}}
+                        }
+                    },
+                    {"$project": {"category": "$_id", "_id": 0, "count": 1, "exposure": 1}}
+                ]
+            }
+        }
+    ]
+
+    try:
+        results = list(_get_db().transactions.aggregate(pipeline))
+        if not results:
+            return {"total_exposure": 0, "risk_buckets": {"high": {"count": 0, "exposure": 0}, "medium": {"count": 0, "exposure": 0}, "low": {"count": 0, "exposure": 0}}, "controls": []}
+
+        data = results[0]
+        total_exp = data["total_exposure"][0]["total"] if data["total_exposure"] else 0
+        
+        risk_buckets = {b["_id"]: {"count": b["count"], "exposure": b["exposure"]} for b in data["risk_buckets"]}
+        # Ensure all buckets exist
+        for b in ["high", "medium", "low"]:
+            if b not in risk_buckets:
+                risk_buckets[b] = {"count": 0, "exposure": 0}
+
+        return {
+            "total_exposure": total_exp,
+            "risk_buckets": risk_buckets,
+            "controls": data["controls"]
+        }
+    except Exception as exc:
+        print(f"Aggregation failed: {exc}")
+        return {"total_exposure": 0, "risk_buckets": {"high": {"count": 0, "exposure": 0}, "medium": {"count": 0, "exposure": 0}, "low": {"count": 0, "exposure": 0}}, "controls": []}
+

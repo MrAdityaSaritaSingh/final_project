@@ -136,7 +136,6 @@ export default function DataIngestionWorkspace() {
       // Store in context for client-side processing
       if (workbookId) {
         setWorkbookData({
-          csvData: rows,
           columnMappings: {},
           workbookId,
         });

@@ -39,12 +39,6 @@ export default function FiltersSidebar({ onApplyFilters, onResetFilters }: Filte
   const [voucherContra, setVoucherContra] = useState(false);
   const [voucherOther, setVoucherOther] = useState(false);
   
-  // Currency (changed to checkbox list)
-  const [currencyINR, setCurrencyINR] = useState(false);
-  const [currencyUSD, setCurrencyUSD] = useState(false);
-  const [currencyEUR, setCurrencyEUR] = useState(false);
-  const [currencyGBP, setCurrencyGBP] = useState(false);
-
   const handleReset = () => {
     // Reset all filter states
     setLedgerType('');
@@ -65,10 +59,6 @@ export default function FiltersSidebar({ onApplyFilters, onResetFilters }: Filte
     setVoucherReceipt(false);
     setVoucherContra(false);
     setVoucherOther(false);
-    setCurrencyINR(false);
-    setCurrencyUSD(false);
-    setCurrencyEUR(false);
-    setCurrencyGBP(false);
     
     // Call parent reset handler
     onResetFilters();
@@ -325,49 +315,6 @@ export default function FiltersSidebar({ onApplyFilters, onResetFilters }: Filte
             </label>
           </div>
         </div>
-
-        {/* 7) Currency Filters */}
-        <div className="mb-6">
-          <label className="block text-sm text-gray-700 mb-3">Currency</label>
-          <div className="space-y-3">
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={currencyINR}
-                onChange={(e) => setCurrencyINR(e.target.checked)}
-                className="rounded border-gray-300 mt-0.5" 
-              />
-              <span className="text-sm text-gray-700">INR</span>
-            </label>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={currencyUSD}
-                onChange={(e) => setCurrencyUSD(e.target.checked)}
-                className="rounded border-gray-300 mt-0.5" 
-              />
-              <span className="text-sm text-gray-700">USD</span>
-            </label>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={currencyEUR}
-                onChange={(e) => setCurrencyEUR(e.target.checked)}
-                className="rounded border-gray-300 mt-0.5" 
-              />
-              <span className="text-sm text-gray-700">EUR</span>
-            </label>
-            <label className="flex items-start gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                checked={currencyGBP}
-                onChange={(e) => setCurrencyGBP(e.target.checked)}
-                className="rounded border-gray-300 mt-0.5" 
-              />
-              <span className="text-sm text-gray-700">GBP</span>
-            </label>
-          </div>
-        </div>
       </div>
 
       {/* Apply Filters Button - Fixed at bottom */}
@@ -393,10 +340,6 @@ export default function FiltersSidebar({ onApplyFilters, onResetFilters }: Filte
               voucherReceipt,
               voucherContra,
               voucherOther,
-              currencyINR,
-              currencyUSD,
-              currencyEUR,
-              currencyGBP,
             };
             onApplyFilters(filters);
           }}

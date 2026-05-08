@@ -72,5 +72,14 @@ export const workbooksApi = {
     });
     return apiClient.get(`/api/workbooks/${workbookId}/transactions?${queryParams.toString()}`, _token());
   },
+
+  // Get aggregated KPIs for a workbook
+  getAggregations: async (workbookId: string): Promise<{
+    total_exposure: number;
+    risk_buckets: Record<string, { count: number; exposure: number }>;
+    controls: Array<{ category: string; count: number; exposure: number }>;
+  }> => {
+    return apiClient.get(`/api/workbooks/${workbookId}/aggregations`, _token());
+  },
 };
 

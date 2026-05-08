@@ -84,17 +84,32 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
           apiParams
         );
 
-        const mappedTransactions: Transaction[] = response.transactions.map((row: any, index: number) => ({
-          id: String(index + 1 + (currentPage - 1) * pageSize),
-          date: row[columnMappings['Date']] || row.date || '',
-          voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
-          account: row[columnMappings['Account Name']] || row.account || '',
-          narration: row[columnMappings['Narration']] || row.narration || '',
-          debit: row[columnMappings['Debit']] ? `₹${Number(row[columnMappings['Debit']]).toLocaleString()}` : '',
-          credit: row[columnMappings['Credit']] ? `₹${Number(row[columnMappings['Credit']]).toLocaleString()}` : '',
-          scrutinyCategory: row.scrutiny_category || '',
-          scrutinyReason: row.scrutiny_reason || '',
-        }));
+        const parseAmount = (val: any): number => {
+          if (val == null || val === '') return NaN;
+          if (typeof val === 'number') return val;
+          // Strip commas, currency symbols, and whitespace
+          const cleaned = String(val).replace(/,/g, '').replace(/[₹$€£]/g, '').trim();
+          return Number(cleaned);
+        };
+
+        const mappedTransactions: Transaction[] = response.transactions.map((row: any, index: number) => {
+          const rawDebit = row[columnMappings['Debit']];
+          const rawCredit = row[columnMappings['Credit']];
+          const debitNum = parseAmount(rawDebit);
+          const creditNum = parseAmount(rawCredit);
+
+          return {
+            id: String(index + 1 + (currentPage - 1) * pageSize),
+            date: row[columnMappings['Date']] || row.date || '',
+            voucherNo: row[columnMappings['Journal ID']] || row.journal_id || row.voucher_no || '',
+            account: row[columnMappings['Account Name']] || row.account || '',
+            narration: row[columnMappings['Narration']] || row.narration || '',
+            debit: !isNaN(debitNum) && debitNum !== 0 ? `₹${Math.abs(debitNum).toLocaleString()}` : '',
+            credit: !isNaN(creditNum) && creditNum !== 0 ? `₹${Math.abs(creditNum).toLocaleString()}` : '',
+            scrutinyCategory: row.scrutiny_category || '',
+            scrutinyReason: row.scrutiny_reason || '',
+          };
+        });
 
         setTotalCount(response.total);
 
@@ -215,7 +230,41 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
       newParams.search = filters.keywordSearch;
     }
 
-    // Add other complex filters if needed, passing them to the backend...
+    // Voucher Types
+    const voucherTypesList = [];
+    if (filters.voucherJournal) voucherTypesList.push('Journal');
+    if (filters.voucherPayment) voucherTypesList.push('Payment');
+    if (filters.voucherReceipt) voucherTypesList.push('Receipt');
+    if (filters.voucherContra) voucherTypesList.push('Contra');
+    if (filters.voucherOther) voucherTypesList.push('Other');
+    
+    if (voucherTypesList.length > 0) {
+      activeFiltersList.push({ id: 'voucherTypes', label: 'Vouchers', value: voucherTypesList.join(', ') });
+      newParams.voucher_types = voucherTypesList.join(',');
+    }
+
+    // Account Series
+    const seriesList = [];
+    if (filters.accountAssets) seriesList.push('1000');
+    if (filters.accountLiabilities) seriesList.push('2000');
+    if (filters.accountEquity) seriesList.push('3000');
+    if (filters.accountRevenue) seriesList.push('4000');
+    if (filters.accountCOGS) seriesList.push('5000');
+    if (filters.accountExpenses) seriesList.push('6000');
+    
+    if (seriesList.length > 0) {
+      activeFiltersList.push({ id: 'accountSeries', label: 'Series', value: seriesList.join(', ') });
+      newParams.account_series = seriesList.join(','); 
+    }
+
+    // Amount Presets
+    if (filters.amountAbove500k) {
+      activeFiltersList.push({ id: 'amountAbove500k', label: 'Preset', value: 'Above ₹5L' });
+      newParams.amount_preset = 'above500k';
+    } else if (filters.topTenPercent) {
+      activeFiltersList.push({ id: 'topTenPercent', label: 'Preset', value: 'Top 10%' });
+      newParams.amount_preset = 'top10expenses';
+    }
     
     setActiveFilters(activeFiltersList);
     setApiParams(newParams);

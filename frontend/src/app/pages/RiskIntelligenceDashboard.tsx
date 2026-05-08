@@ -1,14 +1,14 @@
 import { ArrowRight, Settings, Eye, Upload } from 'lucide-react';
 import { useNavigate } from 'react-router';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import DatasetReviewPanel from '../components/DatasetReviewPanel';
 import { useWorkbook } from '../context/WorkbookContext';
+import { workbooksApi } from '../../api/workbooksApi';
 
 interface RiskIntelligenceDashboardProps {
   embedded?: boolean;
   workbookId?: string;
   analysisSummary?: Record<string, any>;
-  categoryCounts?: any[];
   columnMappings?: Record<string, string>;
 }
 
@@ -16,24 +16,49 @@ export default function RiskIntelligenceDashboard({
   embedded = false,
   workbookId,
   analysisSummary,
-  categoryCounts,
   columnMappings = {},
 }: RiskIntelligenceDashboardProps) {
   const navigate = useNavigate();
   const { workbookData } = useWorkbook();
   const [showReviewPanel, setShowReviewPanel] = useState(false);
+  const [aggregations, setAggregations] = useState<any>(null);
 
-  // Derive KPI cards from real analysis summary
+  useEffect(() => {
+    if (!workbookId || !analysisSummary) return;
+
+    const fetchAggregations = async () => {
+      try {
+        const data = await workbooksApi.getAggregations(workbookId);
+        setAggregations(data);
+      } catch (error) {
+        console.error('Failed to fetch aggregations:', error);
+      }
+    };
+
+    fetchAggregations();
+  }, [workbookId, analysisSummary]);
+
+  // Derive KPI cards from real analysis summary AND aggregations
   const kpiCards = useMemo(() => {
     const summary = analysisSummary || {};
     const totalEntries = summary.total_entries || 0;
     const totalFlagged = summary.total_flagged || 0;
     const pctFlagged = summary.pct_flagged || 0;
 
-    // Simple risk categorization based on percentage flagged
-    const highRisk = Math.round(totalFlagged * 0.2);
-    const mediumRisk = Math.round(totalFlagged * 0.5);
-    const lowRisk = Math.max(0, totalFlagged - highRisk - mediumRisk);
+    const highRisk = aggregations?.risk_buckets?.high?.count ?? 0;
+    const mediumRisk = aggregations?.risk_buckets?.medium?.count ?? 0;
+    const lowRisk = aggregations?.risk_buckets?.low?.count ?? 0;
+    
+    const highExposure = aggregations?.risk_buckets?.high?.exposure ?? 0;
+    const mediumExposure = aggregations?.risk_buckets?.medium?.exposure ?? 0;
+    const lowExposure = aggregations?.risk_buckets?.low?.exposure ?? 0;
+
+    const formatCr = (val: number) => {
+        if (val === 0) return '₹0 Cr';
+        // Convert to Crores (1 Cr = 1,00,00,000)
+        const cr = val / 10000000;
+        return `₹${cr.toFixed(1)} Cr`;
+    }
 
     return [
       { label: 'Total Transactions', value: totalEntries.toLocaleString(), subtitle: '' },
@@ -41,27 +66,27 @@ export default function RiskIntelligenceDashboard({
       {
         label: 'High Risk',
         value: String(highRisk),
-        subtitle: `${(highRisk * 0.1).toFixed(1)} Cr`,
+        subtitle: formatCr(highExposure),
         indicator: 'red',
       },
       {
         label: 'Medium Risk',
         value: String(mediumRisk),
-        subtitle: `${(mediumRisk * 0.05).toFixed(1)} Cr`,
+        subtitle: formatCr(mediumExposure),
         indicator: 'amber',
       },
       {
         label: 'Low Risk',
         value: String(lowRisk),
-        subtitle: `${(lowRisk * 0.02).toFixed(1)} Cr`,
+        subtitle: formatCr(lowExposure),
         indicator: 'green',
       },
     ];
-  }, [analysisSummary]);
+  }, [analysisSummary, aggregations]);
 
-  // Derive control points from category counts
+  // Derive control points from aggregations
   const controlPoints = useMemo(() => {
-    if (!categoryCounts || categoryCounts.length === 0) {
+    if (!aggregations || !aggregations.controls || aggregations.controls.length === 0) {
       return [
         { name: 'Manual Entry', transactions: 0, exposure: '₹0 Cr', status: 'Active' },
         { name: 'Unusual Amount', transactions: 0, exposure: '₹0 Cr', status: 'Active' },
@@ -74,13 +99,13 @@ export default function RiskIntelligenceDashboard({
       ];
     }
 
-    return categoryCounts.map((cat: any) => ({
+    return aggregations.controls.map((cat: any) => ({
       name: cat.category || 'Unknown',
       transactions: cat.count || 0,
-      exposure: `₹${((cat.count || 0) * 0.01).toFixed(1)} Cr`,
+      exposure: `₹${(cat.exposure / 10000000).toFixed(1)} Cr`,
       status: 'Active',
     }));
-  }, [categoryCounts]);
+  }, [aggregations]);
 
   const riskScore = analysisSummary?.pct_flagged || 0;
   const riskLevel = riskScore >= 50 ? 'High Risk' : riskScore >= 20 ? 'Moderate Risk' : 'Low Risk';
@@ -232,7 +257,7 @@ export default function RiskIntelligenceDashboard({
                 </tr>
               </thead>
               <tbody>
-                {controlPoints.map((control, index) => (
+                {controlPoints.map((control: any, index: number) => (
                   <tr
                     key={index}
                     className="border-b border-gray-100 hover:bg-gray-50 transition-colors"

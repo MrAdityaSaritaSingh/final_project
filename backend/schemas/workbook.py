@@ -61,6 +61,5 @@ class WorkbookOut(BaseModel):
     has_entity_config: bool = False
     entity_config: Optional[WorkbookEntityConfigOut] = None
     column_mappings: Optional[dict[str, str]] = None
-    review_rows: Optional[list[dict]] = None
     analysis_summary: Optional[WorkbookAnalysisSummaryOut] = None
     category_counts: Optional[list] = None

@@ -18,6 +18,7 @@ from services.workbook_service import (
     save_analysis_for_user,
     save_entity_config_for_user,
     query_transactions_for_user,
+    aggregate_workbook_kpis,
     to_public_workbook,
 )
 
@@ -197,24 +198,36 @@ def get_workbook_transactions(
     limit: int = 100,
     transaction_type: str = "review",
     search: str = "",
+    search_text: str = "",
     scrutiny_category: str = "",
     quarter: str = "",
     min_amount: float = None,
     max_amount: float = None,
     ledger_type: str = "",
     financial_year: str = "",
+    voucher_types: str = "",
+    account_series: str = "",
+    amount_preset: str = "",
+    sort_by: str = "date",
+    sort_order: str = "asc",
     user_id: str = Depends(_current_user_id)
 ):
     try:
         skip = (page - 1) * limit
         filters = {}
-        if search: filters["search_text"] = search
+        st = search_text or search
+        if st: filters["search_text"] = st
         if scrutiny_category: filters["scrutiny_category"] = scrutiny_category
         if quarter: filters["quarter"] = quarter
         if min_amount is not None: filters["min_amount"] = min_amount
         if max_amount is not None: filters["max_amount"] = max_amount
         if ledger_type: filters["ledger_type"] = ledger_type
         if financial_year: filters["financial_year"] = financial_year
+        if voucher_types: filters["voucher_types"] = [v.strip() for v in voucher_types.split(",") if v.strip()]
+        if account_series: filters["account_series"] = account_series
+        if amount_preset: filters["amount_preset"] = amount_preset
+        
+        s_order = 1 if sort_order.lower() == "asc" else -1
         
         rows, total = query_transactions_for_user(
             user_id=user_id,
@@ -222,7 +235,9 @@ def get_workbook_transactions(
             filters=filters,
             transaction_type=transaction_type,
             skip=skip,
-            limit=limit
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=s_order
         )
         return {
             "transactions": rows,
@@ -231,6 +246,21 @@ def get_workbook_transactions(
             "limit": limit,
             "total_pages": math.ceil(total / limit) if limit > 0 else 0
         }
+    except WorkbookError as exc:
+        detail = str(exc)
+        if "not found" in detail.lower():
+            raise HTTPException(status_code=404, detail=detail) from exc
+        if _is_server_error(detail):
+            raise HTTPException(status_code=503, detail=detail) from exc
+        raise HTTPException(status_code=400, detail=detail) from exc
+
+@router.get("/{workbook_id}/aggregations")
+def get_workbook_aggregations(
+    workbook_id: str,
+    user_id: str = Depends(_current_user_id)
+):
+    try:
+        return aggregate_workbook_kpis(user_id, workbook_id)
     except WorkbookError as exc:
         detail = str(exc)
         if "not found" in detail.lower():
