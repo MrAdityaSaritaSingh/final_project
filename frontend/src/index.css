@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: var(--surface);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-container-lowest: var(--surface-container-lowest);
+  --color-surface-container-low: var(--surface-container-low);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-container-highest: var(--surface-container-highest);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-inverse-surface: var(--inverse-surface);
+  --color-inverse-on-surface: var(--inverse-on-surface);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-surface-tint: var(--surface-tint);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-inverse-primary: var(--inverse-primary);
+  --color-secondary: var(--secondary);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary-container: var(--on-secondary-container);
+  --color-tertiary: var(--tertiary);
+  --color-on-tertiary: var(--on-tertiary);
+  --color-tertiary-container: var(--tertiary-container);
+  --color-on-tertiary-container: var(--on-tertiary-container);
+  --color-error: var(--error);
+  --color-on-error: var(--on-error);
+  --color-error-container: var(--error-container);
+  --color-on-error-container: var(--on-error-container);
+  --color-primary-fixed: var(--primary-fixed);
+  --color-primary-fixed-dim: var(--primary-fixed-dim);
+  --color-on-primary-fixed: var(--on-primary-fixed);
+  --color-on-primary-fixed-variant: var(--on-primary-fixed-variant);
+  --color-secondary-fixed: var(--secondary-fixed);
+  --color-secondary-fixed-dim: var(--secondary-fixed-dim);
+  --color-on-secondary-fixed: var(--on-secondary-fixed);
+  --color-on-secondary-fixed-variant: var(--on-secondary-fixed-variant);
+  --color-tertiary-fixed: var(--tertiary-fixed);
+  --color-tertiary-fixed-dim: var(--tertiary-fixed-dim);
+  --color-on-tertiary-fixed: var(--on-tertiary-fixed);
+  --color-on-tertiary-fixed-variant: var(--on-tertiary-fixed-variant);
+  --color-background: var(--background);
+  --color-on-background: var(--on-background);
+  --color-surface-variant: var(--surface-variant);
+  
+  /* Semantic Aliases for components */
+  --color-muted: var(--surface-container-high);
+  --color-muted-foreground: var(--on-surface-variant);
+  --color-destructive: var(--error);
+  --color-destructive-foreground: var(--on-error);
+  --color-warning: #F59E0B;
+  --color-warning-foreground: #ffffff;
+  --color-success: #10B981;
+  --color-success-foreground: #ffffff;
+  --color-border: var(--outline-variant);
+  --color-input: var(--outline-variant);
+  --color-ring: #2563EB; /* Action Blue */
+
+  --spacing-grid-gutter: var(--grid-gutter);
+  --spacing-cell-x: var(--cell-padding-x);
+  --spacing-cell-y: var(--cell-padding-y);
+  --spacing-panel-gap: var(--panel-gap);
+  --spacing-container-margin: var(--container-margin);
+
+  --radius-lg: 0px;
+  --radius-md: 0px;
+  --radius-sm: 0px;
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-table: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+:root {
+  --surface: #fbf9fa;
+  --surface-dim: #dcd9da;
+  --surface-bright: #fbf9fa;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f6f3f4;
+  --surface-container: #f0edee;
+  --surface-container-high: #eae7e9;
+  --surface-container-highest: #e4e2e3;
+  --on-surface: #1b1b1d;
+  --on-surface-variant: #44474c;
+  --inverse-surface: #303031;
+  --inverse-on-surface: #f3f0f1;
+  --outline: #75777c;
+  --outline-variant: #c5c6cc;
+  --surface-tint: #555f6f;
+  --primary: #0a1422;
+  --on-primary: #ffffff;
+  --primary-container: #1f2937;
+  --on-primary-container: #8690a1;
+  --inverse-primary: #bdc7d9;
+  --secondary: #5d5f5f;
+  --on-secondary: #ffffff;
+  --secondary-container: #dfe0e0;
+  --on-secondary-container: #616363;
+  --tertiary: #0d1520;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #222935;
+  --on-tertiary-container: #89909f;
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+  --primary-fixed: #d9e3f6;
+  --primary-fixed-dim: #bdc7d9;
+  --on-primary-fixed: #121c2a;
+  --on-primary-fixed-variant: #3d4756;
+  --secondary-fixed: #e2e2e2;
+  --secondary-fixed-dim: #c6c6c7;
+  --on-secondary-fixed: #1a1c1c;
+  --on-secondary-fixed-variant: #454747;
+  --tertiary-fixed: #dce2f3;
+  --tertiary-fixed-dim: #c0c7d6;
+  --on-tertiary-fixed: #151c27;
+  --on-tertiary-fixed-variant: #404754;
+  --background: #fbf9fa;
+  --on-background: #1b1b1d;
+  --surface-variant: #e4e2e3;
+
+  --grid-gutter: 1px;
+  --cell-padding-x: 12px;
+  --cell-padding-y: 8px;
+  --panel-gap: 16px;
+  --container-margin: 24px;
+}
+
+/* Typography Utilities */
+.text-header-nav {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+  letter-spacing: -0.02em;
+}
+.text-table-header {
+  font-family: var(--font-table);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.text-table-cell {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18px;
+}
+.text-mono-data {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+.text-body-md {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.text-status-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 12px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--background);
+  color: var(--on-background);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.documentation-quill .ql-toolbar {
+  display: none;
+}
+
+.documentation-quill .ql-container {
+  border: 1px solid var(--outline-variant);
+  border-radius: 0;
+  min-height: 560px;
+  max-height: 560px;
+  overflow-y: auto;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--on-surface);
+}
+
+.documentation-quill .ql-editor {
+  min-height: 560px;
+  padding: 1rem;
+}

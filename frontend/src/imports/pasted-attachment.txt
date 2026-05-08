@@ -1,0 +1,113 @@
+Structured, Gated Data Ingestion Flow
+Apply the following workflow changes to the Data Ingestion Workspace.
+Do NOT redesign visual styling.
+Do NOT change typography, spacing system, or color tokens.
+Only adjust workflow structure and visibility logic.
+________________________________________
+✅ OVERALL GOAL
+Convert the ingestion workspace into a 2-step gated workflow:
+1️⃣ Entity Configuration (mandatory first step)
+2️⃣ File Upload & Mapping (hidden until step 1 completed)
+Additionally:
+File ingestion must require explicit confirmation before profiling/mapping is shown.
+________________________________________
+🧱 PART 1 — Gate File Upload Behind Entity Configuration
+Current Issue
+Entity Setup and File Upload are visible together in a single scrollable workspace.
+This makes the flow feel loose and optional.
+________________________________________
+Required Change
+Step 1: Entity Configuration Section
+This section remains first and visible.
+Fields:
+•	Entity Name
+•	Financial Year (April–March selector)
+•	Ledger Type
+•	Functional Currency
+•	Reporting Currency
+•	Company Code / Subsidiary (optional)
+________________________________________
+Add Primary Button Below Entity Section:
+Button label options:
+•	“Create Workbook”
+or
+•	“Next: Upload Ledger”
+(Use primary brand styling)
+________________________________________
+Behavior
+Until user clicks this button:
+•	Entire File Upload & Mapping section must be hidden.
+•	Not collapsed.
+•	Not dimmed.
+•	Completely not visible.
+This creates a clear step boundary.
+________________________________________
+After Clicking Button
+•	Smooth reveal (no animation required, just state change).
+•	File Upload & Mapping section becomes visible below.
+Optional:
+Show a small step indicator above:
+Step 1 ✓ Entity Configured
+Step 2 Upload & Map Ledger
+Keep minimal. No heavy progress tracker.
+________________________________________
+🧱 PART 2 — Modify File Upload Behavior
+Current Issue
+Immediately after selecting a file:
+•	File details appear
+•	Mapping panel appears
+•	Profiling appears
+This feels automatic and uncontrolled.
+________________________________________
+Required Change
+Step 2 — File Upload Section Layout
+Replace current auto-preview behavior with this structure:
+________________________________________
+Initial State (After Step 1 Completed)
+Show:
+Upload Container
+Drag & Drop Area
+“Select CSV / Excel”
+On right side (where file details currently appear):
+Show empty placeholder container with button:
+Primary Button:
+“Ingest Data”
+This button should be disabled until a file is selected.
+________________________________________
+After User Selects File
+Still DO NOT show:
+•	File details
+•	Preview
+•	Mapping panel
+•	Data health summary
+Only update UI to:
+Show selected file name inside upload area
+Enable “Ingest Data” button
+________________________________________
+When User Clicks “Ingest Data”
+Now reveal:
+1️⃣ File Details Container
+•	File name
+•	Size
+•	Sheet count
+2️⃣ Header Row Selector
+3️⃣ Column Mapping Panel
+4️⃣ Preview Table
+5️⃣ Data Health Summary
+6️⃣ “Run Risk Analysis” Button (below data health summary)
+All appear only after ingestion confirmation.
+________________________________________
+🧭 Updated Visual Flow Summary
+Step 1
+[ Entity Configuration Form ]
+[ Create Workbook → ]
+________________________________________
+Step 2 (Appears After Step 1)
+[ Upload Area ] [ Ingest Data Button ]
+After Ingest Click:
+[ File Details ]
+[ Mapping Panel ]
+[ Data Preview ]
+[ Data Health Summary ]
+[ Run Risk Analysis ]
+
