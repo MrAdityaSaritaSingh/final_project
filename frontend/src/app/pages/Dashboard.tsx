@@ -7,6 +7,7 @@ import FiltersSidebar from '../components/FiltersSidebar';
 import QueryBox from '../components/QueryBox';
 import PaginationBar from '../components/PaginationBar';
 import { useWorkbook } from '../context/WorkbookContext';
+import { useEvidence } from '../context/EvidenceContext';
 import { workbooksApi } from '../../api/workbooksApi';
 
 interface Tab {
@@ -44,6 +45,7 @@ interface DashboardProps {
 export default function Dashboard({ embedded = false, workbookId, initialColumnMappings = {} }: DashboardProps) {
   const navigate = useNavigate();
   const { workbookData } = useWorkbook();
+  const { addEvidence } = useEvidence();
   const columnMappings = workbookData?.columnMappings ?? initialColumnMappings ?? {};
   
   const [tabs, setTabs] = useState<Tab[]>([
@@ -359,8 +361,18 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
     return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
   };
 
-  const handleAddToDocumentation = () => {
-    toast.success('Transaction added to Documentation');
+  const handleAddToDocumentation = (transaction: Transaction) => {
+    addEvidence({
+      id: transaction.id,
+      date: transaction.date,
+      voucherNo: transaction.voucherNo,
+      account: transaction.account,
+      debit: transaction.debit,
+      credit: transaction.credit,
+      narration: transaction.narration,
+      scrutinyCategory: transaction.scrutinyCategory,
+      scrutinyReason: transaction.scrutinyReason,
+    });
   };
 
   return (
@@ -595,7 +607,7 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
                               <td className="px-4 py-3 text-sm text-gray-600 w-80">{transaction.scrutinyReason}</td>
                               <td className="px-4 py-3 text-center">
                                 <button
-                                  onClick={() => handleAddToDocumentation()}
+                                  onClick={() => handleAddToDocumentation(transaction)}
                                   className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
                                   title="Add to Documentation"
                                 >

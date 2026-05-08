@@ -4,39 +4,12 @@ import StarterKit from '@tiptap/starter-kit';
 import { Bold, Italic, Underline, List, ListOrdered, Heading2, FileDown, FileText, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { scrutinyApi } from '../../api/scrutinyApi';
-
-interface Evidence {
-  id: string;
-  date: string;
-  voucherNo: string;
-  account: string;
-  amount: string;
-  scrutinyCategory: string;
-  narration: string;
-}
+import { useEvidence } from '../context/EvidenceContext';
+import type { Evidence } from '../context/EvidenceContext';
+import { Trash2 } from 'lucide-react';
 
 export default function Documentation() {
-  const [evidenceList] = useState<Evidence[]>([
-    {
-      id: '1',
-      date: '2025-04-15',
-      voucherNo: 'JV-001234',
-      account: 'Office Rent - 5100',
-      amount: '₹5,50,000',
-      scrutinyCategory: 'Round Numbers',
-      narration: 'Monthly office rent payment'
-    },
-    {
-      id: '2',
-      date: '2025-04-20',
-      voucherNo: 'PV-002456',
-      account: 'Marketing Expense - 5200',
-      amount: '₹7,25,000',
-      scrutinyCategory: 'Weak Narration',
-      narration: 'Digital advertising campaign'
-    }
-  ]);
-
+  const { evidenceList, removeEvidence } = useEvidence();
   const [isExporting, setIsExporting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
@@ -68,11 +41,12 @@ export default function Documentation() {
   const insertEvidence = (evidence: Evidence) => {
     if (!editor) return;
 
+    const amount = evidence.debit !== '0' ? `(Dr) ₹${evidence.debit}` : `(Cr) ₹${evidence.credit}`;
     const content = `
       <p><strong>Transaction Reference:</strong> ${evidence.voucherNo}</p>
       <p><strong>Date:</strong> ${evidence.date}</p>
       <p><strong>Account:</strong> ${evidence.account}</p>
-      <p><strong>Amount:</strong> ${evidence.amount}</p>
+      <p><strong>Amount:</strong> ${amount}</p>
       <p><strong>Triggered Controls:</strong> ${evidence.scrutinyCategory}</p>
       <p><strong>Narration:</strong> "${evidence.narration}"</p>
       <br/>
@@ -313,17 +287,28 @@ export default function Documentation() {
 
                   <div>
                     <div className="text-xs text-gray-500">Amount</div>
-                    <div className="text-sm text-gray-900 font-medium">{evidence.amount}</div>
+                    <div className="text-sm text-gray-900 font-medium">
+                      {evidence.debit !== '0' ? `(Dr) ₹${evidence.debit}` : `(Cr) ₹${evidence.credit}`}
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => insertEvidence(evidence)}
-                  className="w-full px-3 py-2 text-sm bg-[#095859] text-white rounded hover:bg-[#0B6B6A] transition-colors flex items-center justify-center gap-2"
-                >
-                  <Download className="w-4 h-4" />
-                  Insert into Document
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => insertEvidence(evidence)}
+                    className="flex-1 px-3 py-2 text-sm bg-[#095859] text-white rounded hover:bg-[#0B6B6A] transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4" />
+                    Insert
+                  </button>
+                  <button
+                    onClick={() => removeEvidence(evidence.id)}
+                    className="px-3 py-2 text-sm bg-white text-red-600 border border-red-200 rounded hover:bg-red-50 transition-colors"
+                    title="Remove from evidence"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))
           )}

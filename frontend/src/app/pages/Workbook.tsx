@@ -6,6 +6,7 @@ import { workbooksApi, type Workbook as WorkbookType } from '../../api/workbooks
 import RiskIntelligenceDashboard from './RiskIntelligenceDashboard';
 import Dashboard from './Dashboard';
 import Documentation from './Documentation';
+import { EvidenceProvider } from '../context/EvidenceContext';
 
 type TabType = 'overview' | 'investigation' | 'documentation';
 
@@ -133,20 +134,22 @@ export default function Workbook() {
       </div>
 
       {/* Tab Content */}
-      <div className="flex-1 overflow-hidden">
-        {activeTab === 'overview' && (
-          <RiskIntelligenceDashboard
-            embedded
-            workbookId={workbook.id}
-            analysisSummary={workbook.analysis_summary}
-            columnMappings={workbook.column_mappings}
-          />
-        )}
-        {activeTab === 'investigation' && (
-          <Dashboard embedded workbookId={workbook.id} />
-        )}
-        {activeTab === 'documentation' && <Documentation />}
-      </div>
+      <EvidenceProvider workbookId={workbook.id}>
+        <div className="flex-1 overflow-hidden">
+          {activeTab === 'overview' && (
+            <RiskIntelligenceDashboard
+              embedded
+              workbookId={workbook.id}
+              analysisSummary={workbook.analysis_summary}
+              columnMappings={workbook.column_mappings}
+            />
+          )}
+          {activeTab === 'investigation' && (
+            <Dashboard embedded workbookId={workbook.id} />
+          )}
+          {activeTab === 'documentation' && <Documentation />}
+        </div>
+      </EvidenceProvider>
     </div>
   );
 }
