@@ -61,6 +61,15 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
   const [apiParams, setApiParams] = useState<Record<string, any>>({});
   const [currentQuery, setCurrentQuery] = useState<string>('');
   const [queryResultLabel, setQueryResultLabel] = useState<string>('');
+  const [isParsingQuery, setIsParsingQuery] = useState(false);
+  const [queryExplanation, setQueryExplanation] = useState<{
+    intent: string;
+    assumptions: string[];
+    matchedRules: string[];
+    tier: string;
+    confidence: number;
+    filters: any;
+  } | null>(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -80,7 +89,7 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
           workbookId,
           currentPage,
           pageSize,
-          'flagged', // Default to flagged for investigation workspace
+          apiParams.transaction_type || 'flagged', // NLP search can override to 'review'
           apiParams
         );
 
@@ -179,33 +188,66 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
     }
   };
 
-  const handleQuery = (query: string) => {
-    setCurrentQuery(query);
-    setQueryResultLabel(''); 
+  const handleQuery = async (query: string) => {
+    if (!workbookId) return;
     
-    // Convert natural language query to backend API params
-    const queryLower = query.toLowerCase().trim();
-    const newParams: Record<string, any> = { ...apiParams };
+    setCurrentQuery(query);
+    setIsParsingQuery(true);
+    setQueryExplanation(null);
+    setQueryResultLabel('');
 
-    if (queryLower.includes('weekend')) {
-      newParams.search = 'weekend';
-      setQueryResultLabel(`Showing: Weekend Transactions`);
-    } else if (queryLower.includes('round') && queryLower.includes('transaction')) {
-      newParams.search = 'round';
-      setQueryResultLabel(`Showing: Round Number Transactions`);
-    } else if (queryLower.includes('top') && queryLower.includes('10') && queryLower.includes('expense')) {
-      newParams.search = 'top10_expenses';
-      setQueryResultLabel(`Showing: Top 10% Expenses`);
-    } else {
-      newParams.search = query;
+    try {
+      const result = await workbooksApi.parseQuery(workbookId, query);
+
+      // Map backend filter schema to frontend apiParams
+      const newParams: Record<string, any> = {};
+      const f = result.filters;
+      
+      if (f.search_text) newParams.search = f.search_text;
+      if (f.scrutiny_category) newParams.scrutiny_category = f.scrutiny_category;
+      if (f.quarter) newParams.quarter = f.quarter;
+      if (f.min_amount != null) newParams.min_amount = f.min_amount;
+      if (f.max_amount != null) newParams.max_amount = f.max_amount;
+      if (f.voucher_types) newParams.voucher_types = f.voucher_types.join(',');
+      if (f.transaction_type) newParams.transaction_type = f.transaction_type;
+      if (f.amount_preset) newParams.amount_preset = f.amount_preset;
+      if (f.sort_by) newParams.sort_by = f.sort_by;
+      if (f.sort_order) newParams.sort_order = f.sort_order;
+
+      setApiParams(newParams);
+      setCurrentPage(1);
+      setQueryResultLabel(result.intent);
+      
+      setQueryExplanation({
+        intent: result.intent,
+        assumptions: result.assumptions,
+        matchedRules: result.matched_rules.map((r: any) => r.name),
+        tier: result.tier,
+        confidence: result.confidence,
+        filters: f
+      });
+      
+    } catch (error) {
+      console.error('Failed to parse NLP query:', error);
+      // Fallback to basic text search
+      setApiParams({ search: query });
+      setCurrentPage(1);
       setQueryResultLabel(`Search: "${query}"`);
+    } finally {
+      setIsParsingQuery(false);
     }
+  };
 
-    setApiParams(newParams);
-    setCurrentPage(1); // Reset to first page
+  const handleClearQuery = () => {
+    setCurrentQuery('');
+    setQueryResultLabel('');
+    setQueryExplanation(null);
+    setApiParams({});
+    setCurrentPage(1);
   };
 
   const handleApplyFilters = (filters: any) => {
+    setQueryExplanation(null); // Clear NLP explanation when manual filters are applied
     const activeFiltersList: ActiveFilter[] = [];
     const newParams: Record<string, any> = {};
 
@@ -590,8 +632,72 @@ export default function Dashboard({ embedded = false, workbookId, initialColumnM
           </div>
 
           {/* Bottom Docked Query Bar */}
-          <div className="bg-white border-t border-gray-200 px-6 py-5 flex-shrink-0" style={{ boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.04)' }}>
-            <QueryBox onQuery={handleQuery} />
+          <div className="bg-white border-t border-gray-200 px-6 py-4 flex-shrink-0" style={{ boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.04)' }}>
+            <AnimatePresence>
+              {queryExplanation && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg text-xs"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-2 text-[#095859] font-semibold">
+                      <span className="text-sm">🎯 {queryExplanation.intent}</span>
+                    </div>
+                    <button 
+                      onClick={handleClearQuery}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 text-gray-600">
+                    <div>
+                      <p className="font-medium text-gray-900 mb-1 underline">Applied Filters:</p>
+                      <ul className="space-y-0.5">
+                        {Object.entries(queryExplanation.filters).map(([key, val]) => {
+                          if (val === null || val === undefined || val === '' || (Array.isArray(val) && val.length === 0)) return null;
+                          return (
+                            <li key={key} className="flex gap-2">
+                              <span className="text-gray-400">├─</span>
+                              <span>{key.replace(/_/g, ' ')}: <span className="text-gray-900 font-medium">{String(val)}</span></span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-900 mb-1 underline">Parsing Context:</p>
+                      <div className="space-y-2">
+                        {queryExplanation.assumptions.length > 0 && (
+                          <div>
+                            <p className="text-gray-400 mb-0.5 italic">Assumptions:</p>
+                            <ul className="list-disc pl-4 space-y-0.5">
+                              {queryExplanation.assumptions.map((a, i) => <li key={i}>{a}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 bg-blue-50 text-blue-700 rounded border border-blue-100">
+                            ⚡ {queryExplanation.tier}
+                          </span>
+                          <span className="text-gray-400">|</span>
+                          <span>Confidence: {Math.round(queryExplanation.confidence * 100)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <QueryBox
+              onQuery={handleQuery}
+              onClear={handleClearQuery}
+              isLoading={isParsingQuery}
+              hasActiveQuery={!!queryResultLabel}
+            />
           </div>
         </div>
       </div>

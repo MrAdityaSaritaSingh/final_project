@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Loader2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 interface QueryBoxProps {
   onQuery: (query: string) => void;
+  onClear?: () => void;
+  isLoading?: boolean;
+  hasActiveQuery?: boolean;
 }
 
 const PROMPT_SUGGESTIONS = [
@@ -15,7 +18,7 @@ const PROMPT_SUGGESTIONS = [
   'Highlight transactions flagged as high risk'
 ];
 
-export default function QueryBox({ onQuery }: QueryBoxProps) {
+export default function QueryBox({ onQuery, onClear, isLoading = false, hasActiveQuery = false }: QueryBoxProps) {
   const [query, setQuery] = useState('');
   const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
   const [isFocused, setIsFocused] = useState(false);
@@ -58,7 +61,8 @@ export default function QueryBox({ onQuery }: QueryBoxProps) {
             onFocus={handleFocus}
             onBlur={handleBlur}
             placeholder=" "
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#095859] focus:border-[#095859]"
+            className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#095859] focus:border-[#095859] disabled:bg-gray-50"
+            disabled={isLoading}
           />
           {/* Animated Placeholder Suggestions */}
           {query.length === 0 && (
@@ -78,13 +82,27 @@ export default function QueryBox({ onQuery }: QueryBoxProps) {
             </div>
           )}
         </div>
+        {hasActiveQuery && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="px-4 py-3 text-gray-500 hover:text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            title="Clear query and show flagged transactions"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
         <button
           type="submit"
-          disabled={!query.trim()}
-          className="px-6 py-3 bg-[#095859] text-white rounded-lg hover:bg-[#0B6B6A] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={!query.trim() || isLoading}
+          className="px-6 py-3 bg-[#095859] text-white rounded-lg hover:bg-[#0B6B6A] transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed min-w-[100px] justify-center"
         >
-          <Send className="w-4 h-4" />
-          <span className="font-medium">Run</span>
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Send className="w-4 h-4" />
+          )}
+          <span className="font-medium">{isLoading ? 'Parsing...' : 'Run'}</span>
         </button>
       </form>
     </div>

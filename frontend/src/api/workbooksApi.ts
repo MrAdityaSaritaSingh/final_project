@@ -81,5 +81,10 @@ export const workbooksApi = {
   }> => {
     return apiClient.get(`/api/workbooks/${workbookId}/aggregations`, _token());
   },
+
+  // Parse natural language query into deterministic filters
+  parseQuery: async (workbookId: string, query: string): Promise<any> => {
+    return apiClient.post(`/api/workbooks/${workbookId}/query-parse`, { query }, _token());
+  },
 };
 

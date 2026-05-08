@@ -21,6 +21,9 @@ from services.workbook_service import (
     aggregate_workbook_kpis,
     to_public_workbook,
 )
+from schemas.nlp import NLPQueryRequest, NLPQueryResponse
+from services.query_parser import parse_natural_language_query
+from scrutiny.engine import RULES
 
 
 router = APIRouter()
@@ -268,3 +271,23 @@ def get_workbook_aggregations(
         if _is_server_error(detail):
             raise HTTPException(status_code=503, detail=detail) from exc
         raise HTTPException(status_code=400, detail=detail) from exc
+
+@router.post("/{workbook_id}/query-parse", response_model=NLPQueryResponse)
+def parse_nlp_query_endpoint(
+    workbook_id: str,
+    body: NLPQueryRequest,
+    user_id: str = Depends(_current_user_id)
+):
+    try:
+        # Fetch workbook context
+        doc = get_workbook_for_user(user_id, workbook_id)
+        context = {
+            "financial_year": doc.get("financial_year"),
+            "categories": list(RULES.keys()),
+        }
+        return parse_natural_language_query(body.query, context)
+    except WorkbookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        # Log the real exception internally here if logging is configured
+        raise HTTPException(status_code=500, detail="An internal error occurred while parsing the query.")
