@@ -336,19 +336,19 @@ export default function DataIngestionWorkspace() {
         {/* SECTION A: Entity Configuration */}
         <div className="bg-white border border-gray-300 p-8">
           <div className="mb-6">
-            <h2 className="text-base text-gray-900 mb-1">1. Entity Configuration</h2>
+            <h2 className="text-base text-gray-900 mb-1">1. Ledger Configuration</h2>
             <p className="text-sm text-gray-600">Define the financial and reporting context for this ledger.</p>
           </div>
 
           <div className="grid grid-cols-2 gap-x-6 gap-y-5">
             <div>
-              <label className="block text-sm text-gray-700 mb-2">Entity Name</label>
+              <label className="block text-sm text-gray-700 mb-2">Ledger Name</label>
               <input
                 type="text"
                 value={entityName}
                 onChange={(e) => setEntityName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 text-sm text-gray-900 focus:outline-none focus:border-gray-400"
-                placeholder="Enter entity name"
+                placeholder="Enter Ledger name"
               />
             </div>
 
@@ -360,6 +360,7 @@ export default function DataIngestionWorkspace() {
                 className="w-full px-3 py-2 border border-gray-300 text-sm text-gray-900 focus:outline-none focus:border-gray-400"
               >
                 <option value="">Select financial year</option>
+                <option value="2025-2026">April 2025 - March 2026</option>
                 <option value="2024-2025">April 2024 - March 2025</option>
                 <option value="2023-2024">April 2023 - March 2024</option>
                 <option value="2022-2023">April 2022 - March 2023</option>
